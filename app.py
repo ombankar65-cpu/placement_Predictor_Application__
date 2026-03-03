@@ -1,48 +1,43 @@
-import streamlit as st
-import pandas as pd
+from flask import Flask, request, jsonify
 import pickle
+import numpy as np
 
-# Load the trained model
-try:
-    with open('model.pkl', 'rb') as f:
-        model = pickle.load(f)
-except Exception as e:
-    st.error(f"Error loading model: {e}")
+app = Flask(__name__)
 
-st.title("🎓 Student Placement Predictor")
-st.write("Enter student details to predict campus placement status.")
+# Load the model
+with open('model.pkl', 'rb') as f:
+    model = pickle.load(f)
 
-# Create two columns for a cleaner layout
-col1, col2 = st.columns(2)
+@app.route('/')
+def home():
+    return "KNN Placement Prediction API is Running"
 
-with col1:
-    gender = st.selectbox("Gender", options=["Male", "Female"])
-    ssc_p = st.number_input("10th (SSC) Percentage", min_value=0.0, max_value=100.0, value=65.0)
-    hsc_p = st.number_input("12th (HSC) Percentage", min_value=0.0, max_value=100.0, value=65.0)
-
-with col2:
-    hsc_s = st.selectbox("12th Specialization", options=["Commerce", "Science", "Arts"])
-    degree_p = st.number_input("Degree Percentage", min_value=0.0, max_value=100.0, value=65.0)
-    mba_p = st.number_input("MBA Percentage", min_value=0.0, max_value=100.0, value=65.0)
-
-# Map categorical data to the numerical format your model likely expects
-# Note: If your model used LabelEncoding or One-Hot Encoding, adjust these mappings accordingly
-gender_val = 1 if gender == "Male" else 0
-hsc_s_map = {"Commerce": 0, "Science": 1, "Arts": 2}
-hsc_s_val = hsc_s_map[hsc_s]
-
-# Predict button
-if st.button("Predict Placement Status"):
-    # Arrange features in the exact order the model was trained on
-    features = pd.DataFrame([[gender_val, ssc_p, hsc_p, hsc_s_val, degree_p, mba_p]], 
-                            columns=['gender', 'ssc_p', 'hsc_p', 'hsc_s', 'degree_p', 'mba_p'])
+@app.route('/predict', methods=['POST'])
+def predict():
+    try:
+        data = request.get_json()
+        
+        # Extract features in the correct order as per model metadata
+        # features: [gender, ssc_p, hsc_p, hsc_s, degree_p, mba_p]
+        features = [
+            data['gender'],
+            data['ssc_p'],
+            data['hsc_p'],
+            data['hsc_s'],
+            data['degree_p'],
+            data['mba_p']
+        ]
+        
+        # Convert to numpy array and reshape for prediction
+        final_features = np.array([features])
+        prediction = model.predict(final_features)
+        
+        return jsonify({
+            'prediction': str(prediction[0])
+        })
     
-    prediction = model.predict(features)
-    
-    if prediction[0] == "Placed":
-        st.success("🎉 Predicted Status: **Placed**")
-    else:
-        st.warning("⚠️ Predicted Status: **Not Placed**")
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
-st.divider()
-st.info("This model uses a K-Neighbors Classifier to determine placement probability based on academic history.")
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5000)
